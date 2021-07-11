@@ -12,7 +12,7 @@ import (
 
 type Parsed struct {
 	PackageName string
-	Functions map[string]*Function
+	Functions   map[string]*Function
 }
 
 func Directory(dir string) (*Parsed, error) {
@@ -47,7 +47,8 @@ func Directory(dir string) (*Parsed, error) {
 }
 
 type Function struct {
-	Name string
+	Name      string
+	UIName    string
 	Directive string
 	Signature *Signature
 }
@@ -79,9 +80,22 @@ func getFunctionsFromPackage(pkg *ast.Package) (map[string]*Function, error) {
 					}
 				}
 
+				splitDirective := strings.Fields(directiveText)
+				if splitDirective[0] != "cmd" {
+					return nil, fmt.Errorf("unknown directive command %s", splitDirective[0])
+				}
+
 				s := funcDecl.Name.String()
-				functions[s] = &Function{
+				var name string
+				if len(splitDirective) >= 2 {
+					name = splitDirective[1]
+				} else {
+					name = s
+				}
+
+				functions[name] = &Function{
 					Name:      s,
+					UIName:    name,
 					Directive: directiveText,
 					Signature: signatureFromDeclaration(funcDecl),
 				}

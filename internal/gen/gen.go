@@ -109,8 +109,8 @@ func File(packageName string, functions map[string]*parse.Function) ([]byte, err
 
 	g.w("var intSize = bits.UintSize")
 	g.w("var funcNames = map[string]string{")
-	for funcName := range functions {
-		g.w(`"%s": "%s",`, strings.ToLower(funcName), funcName)
+	for _, finfo := range functions {
+		g.w(`"%s": "%s",`, strings.ToLower(finfo.UIName), finfo.UIName)
 	}
 	g.w("}")
 
