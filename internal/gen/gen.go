@@ -321,6 +321,8 @@ func callFunc(g *generator, f *parse.Function) error {
 			}
 
 			checkProvided(g, arg, id, x.b.Bytes())
+		default:
+			return fmt.Errorf("unknown argument data type of %s (%s) in function %s", arg.Type, arg.Name, f.Name)
 		}
 
 	}
