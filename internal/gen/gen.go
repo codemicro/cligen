@@ -67,15 +67,26 @@ func (g *generator) w(x string, args ...interface{}) {
 	g.b.WriteString(fmt.Sprintf(x, args...) + "\n")
 }
 
-func (g *generator) ifErrNotNil(x string) {
+func (g *generator) checkPreparationError(x string) {
 	if x == "" {
 		x = "err"
 	}
-	g.b.WriteString("if " + x + " != nil {\nreturn " + x + "\n}\n")
+	g.b.WriteString("if " + x + " != nil {\nreturn &preparationError{original: " + x + "} \n}\n")
 }
 
-func (g *generator) returnError(x string, args ...interface{}) {
-	g.b.WriteString("return errors.New(\"" + fmt.Sprintf(x, args...) + "\")")
+func (g *generator) checkRuntimeError(x string) {
+	if x == "" {
+		x = "err"
+	}
+	g.b.WriteString("if " + x + " != nil {\nreturn &runtimeError{original: " + x + "} \n}\n")
+}
+
+func (g *generator) returnRuntimeError(x string, args ...interface{}) {
+	g.b.WriteString("return &runtimeError{original: errors.New(\"" + fmt.Sprintf(x, args...) + "\")}")
+}
+
+func (g *generator) returnPreparationError(x string, args ...interface{}) {
+	g.b.WriteString("return &preparationError{original: errors.New(\"" + fmt.Sprintf(x, args...) + "\")}")
 }
 
 func File(filename string, packageName string, functions map[string]*parse.Function) ([]byte, error) {
@@ -84,7 +95,7 @@ func File(filename string, packageName string, functions map[string]*parse.Funct
 
 	g.w("package %s", packageName)
 
-	imports := []string{"errors", "strings", "github.com/codemicro/cligen/parsecli", "math/bits", "strconv"}
+	imports := []string{"errors", "strings", "github.com/codemicro/cligen/parsecli", "math/bits", "strconv", "fmt", "os"}
 	g.w("import (")
 	for _, i := range imports {
 		g.w(`"%s"`, i)
@@ -98,22 +109,52 @@ func File(filename string, packageName string, functions map[string]*parse.Funct
 	}
 	g.w("}")
 
-	g.w("func Start(input []string) error {")
+	g.w("type runtimeError struct { original error }")
+	g.w("func (err *runtimeError) Error() string { return err.original.Error() }")
+
+	g.w("type preparationError struct { original error }")
+	g.w("func (err *preparationError) Error() string { return err.original.Error() }")
+
+	g.w("func Start(input []string) {")
+	{
+		g.w("err := run(input)")
+		g.w("if err != nil {")
+		{
+			g.w(`if err, ok := err.(*runtimeError); ok {`)
+			{
+				g.w(`fmt.Fprintln(os.Stderr, "runtime error:", err.Error())`)
+				g.w("return")
+			}
+			g.w("}")
+
+			g.w(`if err, ok := err.(*preparationError); ok {`)
+			{
+				g.w(`fmt.Fprintln(os.Stderr, "preparation error:", err.Error())`)
+				g.w("return")
+			}
+			g.w("}")
+		}
+		g.w("}")
+		g.w(`panic("this should not happen")`)
+	}
+	g.w("}")
+
+	g.w("func run(input []string) error {")
 
 	g.w("if len(input) == 0 {")
-	g.returnError("not enough arguments")
+	g.returnPreparationError("not enough arguments")
 	g.w("}")
 
 	g.w("var runFunc string")
 
 	g.w(`if fname, ok := funcNames[strings.ToLower(input[0])]; !ok {`)
-	g.returnError("no matching targets found")
+	g.returnPreparationError("no matching targets found")
 	g.w("} else {")
 	g.w("runFunc = fname")
 	g.w("}")
 
 	g.w("parsedFlags, parsedArgs, err := parsecli.Slice(input[1:])")
-	g.ifErrNotNil("")
+	g.checkPreparationError("")
 
 	g.w("switch runFunc {")
 
@@ -136,6 +177,8 @@ func File(filename string, packageName string, functions map[string]*parse.Funct
 	g.w("return nil")
 	g.w("}")
 
+	fmt.Println(g.b.String())
+
 	return format.Source(g.b.Bytes())
 }
 
@@ -150,7 +193,7 @@ func checkArgs(g *generator, sig *parse.Signature) error {
 	}
 
 	g.w(`if len(parsedArgs) < %d {`, numArgs)
-	g.returnError("not enough arguments")
+	g.returnPreparationError("not enough arguments")
 	g.w("}")
 
 	return nil
@@ -197,7 +240,7 @@ func callFunc(g *generator, f *parse.Function) error {
 		x := newGenerator()
 		tempID := nextIdentifier()
 		x.w("%s, err := strconv.%s(%s, 10, intSize)", tempID, f, source)
-		x.ifErrNotNil("")
+		x.checkPreparationError("")
 
 		if arg.IsPointer {
 			y := nextIdentifier()
@@ -229,7 +272,7 @@ func callFunc(g *generator, f *parse.Function) error {
 
 			tempID := nextIdentifier()
 			x.w("%s, err := strconv.ParseFloat(%s, 32)", tempID, source)
-			x.ifErrNotNil("")
+			x.checkPreparationError("")
 
 			if arg.IsPointer {
 				y := nextIdentifier()
@@ -254,7 +297,7 @@ func callFunc(g *generator, f *parse.Function) error {
 			}
 
 			x.w("%s, err := strconv.ParseBool(%s)", t, source)
-			x.ifErrNotNil("")
+			x.checkPreparationError("")
 
 			if arg.IsPointer {
 				y := nextIdentifier()
@@ -307,7 +350,7 @@ func callFunc(g *generator, f *parse.Function) error {
 	g.w("%s%s(%s)", returnBlock, f.Name, strings.Join(varIDs, ", "))
 
 	if len(returns) != 0 {
-		g.ifErrNotNil(errID)
+		g.checkRuntimeError(errID)
 	}
 
 	return nil
