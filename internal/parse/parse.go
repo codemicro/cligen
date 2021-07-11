@@ -10,7 +10,12 @@ import (
 	"strings"
 )
 
-func Directory(dir string) (map[string]*Function, error) {
+type Parsed struct {
+	PackageName string
+	Functions map[string]*Function
+}
+
+func Directory(dir string) (*Parsed, error) {
 	fset := token.NewFileSet()
 	packages, err := parser.ParseDir(fset, dir, func(info fs.FileInfo) bool {
 		name := info.Name()
@@ -30,13 +35,21 @@ func Directory(dir string) (map[string]*Function, error) {
 		break
 	}
 
-	return getFunctionsFromPackage(pkg)
+	functions, err := getFunctionsFromPackage(pkg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Parsed{
+		PackageName: pkg.Name,
+		Functions:   functions,
+	}, nil
 }
 
 type Function struct {
 	Name string
 	Directive string
-	Signature *signature
+	Signature *Signature
 }
 
 func getFunctionsFromPackage(pkg *ast.Package) (map[string]*Function, error) {
