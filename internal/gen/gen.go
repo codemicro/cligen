@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/codemicro/cligen/internal/parse"
-	"io"
+	"go/format"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -78,7 +78,7 @@ func (g *generator) returnError(x string, args ...interface{}) {
 	g.b.WriteString("return errors.New(\"" + fmt.Sprintf(x, args...) + "\")")
 }
 
-func File(filename string, packageName string, functions map[string]*parse.Function) (io.Reader, error) {
+func File(filename string, packageName string, functions map[string]*parse.Function) ([]byte, error) {
 
 	g := newGenerator()
 
@@ -136,7 +136,7 @@ func File(filename string, packageName string, functions map[string]*parse.Funct
 	g.w("return nil")
 	g.w("}")
 
-	return g.b, nil
+	return format.Source(g.b.Bytes())
 }
 
 func checkArgs(g *generator, sig *parse.Signature) error {

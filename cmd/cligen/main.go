@@ -13,8 +13,7 @@ func main() {
 
 	b, err := gen.File("hello.go", info.PackageName, info.Functions)
 	fmt.Println(err)
-	all, _ := ioutil.ReadAll(b)
-	fmt.Println(string(all), err)
+	fmt.Println(string(b), err)
 
-	_ = ioutil.WriteFile("testdata/package/runner.cligen.go", all, 0644)
+	_ = ioutil.WriteFile("testdata/package/runner.cligen.go", b, 0644)
 }
