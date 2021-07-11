@@ -11,7 +11,7 @@ func main() {
 	info, err := parse.Directory("testdata/package")
 	fmt.Printf("%#v %v\n", info, err)
 
-	b, err := gen.File("hello.go", info.PackageName, info.Functions)
+	b, err := gen.File(info.PackageName, info.Functions)
 	fmt.Println(err)
 	fmt.Println(string(b), err)
 
