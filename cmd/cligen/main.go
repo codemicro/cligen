@@ -8,10 +8,10 @@ import (
 )
 
 func main() {
-	info, err := parse.Directory("testdata/package")
-	fmt.Printf("%#v %v\n", info, err)
+	program, err := parse.Directory("testdata/package")
+	fmt.Printf("%#v %v\n", program, err)
 
-	b, err := gen.File(info.PackageName, info.Functions)
+	b, err := gen.File(program)
 	fmt.Println(err)
 	fmt.Println(string(b), err)
 

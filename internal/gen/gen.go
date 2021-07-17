@@ -89,9 +89,9 @@ func (g *generator) returnPreparationError(cmdName, x string, args ...interface{
 	g.b.WriteString("return &preparationError{original: errors.New(\"" + fmt.Sprintf(x, args...) + "\"), text: " + fmt.Sprintf("%#v", cmdName) + "}")
 }
 
-func File(packageName string, functions map[string]*parse.Function) ([]byte, error) {
+func File(program *parse.Program) ([]byte, error) {
 
-	helpTexts := makeHelpTexts(functions)
+	helpTexts := makeHelpTexts(program.Functions)
 
 	g := newGenerator()
 
@@ -100,7 +100,7 @@ func File(packageName string, functions map[string]*parse.Function) ([]byte, err
 
 	g.w("")
 
-	g.w("package %s", packageName)
+	g.w("package %s", program.PackageName)
 
 	imports := []string{"errors", "strings", "github.com/codemicro/cligen/parsecli", "math/bits", "strconv", "fmt", "os"}
 	g.w("import (")
@@ -112,14 +112,14 @@ func File(packageName string, functions map[string]*parse.Function) ([]byte, err
 	g.w("var intSize = bits.UintSize")
 	g.w("var funcNames = map[string]string{")
 	g.w(`"help": "help",`)
-	for _, finfo := range functions {
+	for _, finfo := range program.Functions {
 		g.w(`%#v: %#v,`, strings.ToLower(finfo.UIName), finfo.UIName)
 	}
 	g.w("}")
 
 	g.w("var funcHelps = map[string]string{")
 	g.w(`"": fmt.Sprintf(%#v, execName),`, helpTexts[""])
-	for fname, finfo := range functions {
+	for fname, finfo := range program.Functions {
 		g.w("%#v: fmt.Sprintf(%#v, execName),", finfo.UIName, helpTexts[fname])
 	}
 	g.w("}")
@@ -188,7 +188,7 @@ func File(packageName string, functions map[string]*parse.Function) ([]byte, err
 		g.w("return nil")
 	}
 
-	for f, finfo := range functions {
+	for f, finfo := range program.Functions {
 
 		g.w(`case "%s":`, f)
 
