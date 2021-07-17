@@ -120,22 +120,21 @@ func File(packageName string, functions map[string]*parse.Function) ([]byte, err
 	g.w("type preparationError struct { original error }")
 	g.w("func (err *preparationError) Error() string { return err.original.Error() }")
 
-	g.w("func Start(input []string) {")
+	g.w("func Start(input []string) error {")
 	{
 		g.w("err := run(input)")
 		g.w("if err != nil {")
 		{
 			g.w(`if err, ok := err.(*runtimeError); ok {`)
 			{
-				g.w(`fmt.Fprintln(os.Stderr, "runtime error:", err.Error())`)
-				g.w("return")
+				g.w("return err")
 			}
 			g.w("}")
 
 			g.w(`if err, ok := err.(*preparationError); ok {`)
 			{
 				g.w(`fmt.Fprintln(os.Stderr, "preparation error:", err.Error())`)
-				g.w("return")
+				g.w("return nil")
 			}
 			g.w("}")
 		}
