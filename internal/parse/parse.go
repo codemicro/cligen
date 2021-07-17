@@ -48,7 +48,7 @@ func Directory(dir string) (*Program, error) {
 type Function struct {
 	Name        string
 	UIName      string
-	Directive   string
+	Directives  []string
 	Signature   *Signature
 	Description string
 }
@@ -71,7 +71,10 @@ func getFunctionsFromPackage(pkg *ast.Package) (map[string]*Function, error) {
 					continue
 				}
 
-				directiveText, err := getDirective(funcDecl.Doc)
+				function := new(Function)
+				function.Signature = signatureFromDeclaration(funcDecl)
+
+				directives, err := getDirectives(funcDecl.Doc)
 				if err != nil {
 					if errors.Is(err, errorNoDirective) {
 						continue
@@ -80,29 +83,17 @@ func getFunctionsFromPackage(pkg *ast.Package) (map[string]*Function, error) {
 					}
 				}
 
-				splitDirective := strings.Fields(directiveText)
-				if splitDirective[0] != "cmd" {
-					return nil, fmt.Errorf("unknown directive command %s", splitDirective[0])
-				}
+				function.Directives = directives
+				function.Name = funcDecl.Name.String()
+				function.UIName = function.Name
 
-				s := funcDecl.Name.String()
-				var name string
-				if len(splitDirective) >= 2 {
-					name = splitDirective[1]
-				} else {
-					name = s
-				}
-
-				if strings.ToLower(name) == "help" {
+				if strings.ToLower(function.UIName) == "help" {
 					return nil, errors.New("disallowed function name \"help\": help is a reserved name")
 				}
 
-				functions[name] = &Function{
-					Name:      s,
-					UIName:    name,
-					Directive: directiveText,
-					Signature: signatureFromDeclaration(funcDecl),
-				}
+				applyDirectives(function)
+
+				functions[function.UIName] = function
 			}
 
 		}

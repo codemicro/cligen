@@ -7,13 +7,14 @@ import (
 
 type Signature struct {
 	Argument []*Param
-	Return []*Param
+	Return   []*Param
 }
 
 type Param struct {
-	Name string
-	Type string
-	IsPointer bool
+	Name        string
+	Description string
+	Type        string
+	IsPointer   bool
 }
 
 func signatureFromDeclaration(f *ast.FuncDecl) *Signature {
