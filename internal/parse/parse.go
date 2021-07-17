@@ -10,12 +10,12 @@ import (
 	"strings"
 )
 
-type Parsed struct {
+type Program struct {
 	PackageName string
 	Functions   map[string]*Function
 }
 
-func Directory(dir string) (*Parsed, error) {
+func Directory(dir string) (*Program, error) {
 	fset := token.NewFileSet()
 	packages, err := parser.ParseDir(fset, dir, func(info fs.FileInfo) bool {
 		name := info.Name()
@@ -24,7 +24,6 @@ func Directory(dir string) (*Parsed, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	if len(packages) != 1 {
 		return nil, errors.New("input directory must only have source files with at most a single package in it") // TODO: This error is phrased weird.
 	}
@@ -40,7 +39,7 @@ func Directory(dir string) (*Parsed, error) {
 		return nil, err
 	}
 
-	return &Parsed{
+	return &Program{
 		PackageName: pkg.Name,
 		Functions:   functions,
 	}, nil
