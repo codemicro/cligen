@@ -67,11 +67,11 @@ func (g *generator) w(x string, args ...interface{}) {
 	g.b.WriteString(fmt.Sprintf(x, args...) + "\n")
 }
 
-func (g *generator) checkPreparationError(x string) {
+func (g *generator) checkPreparationError(cmdName, x string) {
 	if x == "" {
 		x = "err"
 	}
-	g.b.WriteString("if " + x + " != nil {\nreturn &preparationError{original: " + x + "} \n}\n")
+	g.b.WriteString("if " + x + " != nil {\nreturn &preparationError{original: " + x + ", text: " + fmt.Sprintf("%#v", cmdName) + "} \n}\n")
 }
 
 func (g *generator) checkRuntimeError(x string) {
@@ -85,11 +85,13 @@ func (g *generator) returnRuntimeError(x string, args ...interface{}) {
 	g.b.WriteString("return &runtimeError{original: errors.New(\"" + fmt.Sprintf(x, args...) + "\")}")
 }
 
-func (g *generator) returnPreparationError(x string, args ...interface{}) {
-	g.b.WriteString("return &preparationError{original: errors.New(\"" + fmt.Sprintf(x, args...) + "\")}")
+func (g *generator) returnPreparationError(cmdName, x string, args ...interface{}) {
+	g.b.WriteString("return &preparationError{original: errors.New(\"" + fmt.Sprintf(x, args...) + "\"), text: " + fmt.Sprintf("%#v", cmdName) + "}")
 }
 
 func File(packageName string, functions map[string]*parse.Function) ([]byte, error) {
+
+	helpTexts := makeHelpTexts(functions)
 
 	g := newGenerator()
 
@@ -109,15 +111,25 @@ func File(packageName string, functions map[string]*parse.Function) ([]byte, err
 
 	g.w("var intSize = bits.UintSize")
 	g.w("var funcNames = map[string]string{")
+	g.w(`"help": "help",`)
 	for _, finfo := range functions {
-		g.w(`"%s": "%s",`, strings.ToLower(finfo.UIName), finfo.UIName)
+		g.w(`%#v: %#v,`, strings.ToLower(finfo.UIName), finfo.UIName)
 	}
 	g.w("}")
 
-	g.w("type runtimeError struct { original error }")
+	g.w("var funcHelps = map[string]string{")
+	g.w(`"": fmt.Sprintf(%#v, execName),`, helpTexts[""])
+	for fname, finfo := range functions {
+		g.w("%#v: fmt.Sprintf(%#v, execName),", finfo.UIName, helpTexts[fname])
+	}
+	g.w("}")
+
+	g.w("var execName = os.Args[0]")
+
+	g.w("type runtimeError struct { original error; text string }")
 	g.w("func (err *runtimeError) Error() string { return err.original.Error() }")
 
-	g.w("type preparationError struct { original error }")
+	g.w("type preparationError struct { original error; text string }")
 	g.w("func (err *preparationError) Error() string { return err.original.Error() }")
 
 	g.w("func Start(input []string) error {")
@@ -133,42 +145,54 @@ func File(packageName string, functions map[string]*parse.Function) ([]byte, err
 
 			g.w(`if err, ok := err.(*preparationError); ok {`)
 			{
-				g.w(`fmt.Fprintln(os.Stderr, "preparation error:", err.Error())`)
-				g.w("return nil")
+				g.w("x := err.text")
+				g.w("if x != \"\" { x = \" \" + x }")
+				g.w("fmt.Fprintf(os.Stderr, \"%%s\\nRun `%%s help%%s` for more information\\n\", err.Error(), execName, x)")
+				g.w("os.Exit(1)")
+				// g.w("return nil")
 			}
 			g.w("}")
 		}
 		g.w("}")
-		g.w(`panic("this should not happen")`)
+		g.w(`return nil`)
 	}
 	g.w("}")
 
 	g.w("func run(input []string) error {")
 
 	g.w("if len(input) == 0 {")
-	g.returnPreparationError("not enough arguments")
+	g.returnPreparationError("", "not enough arguments")
 	g.w("}")
 
 	g.w("var runFunc string")
 
 	g.w(`if fname, ok := funcNames[strings.ToLower(input[0])]; !ok {`)
-	g.returnPreparationError("no matching targets found")
+	g.returnPreparationError("", "no matching targets found")
 	g.w("} else {")
 	g.w("runFunc = fname")
 	g.w("}")
 
 	g.w("parsedFlags, parsedArgs, err := parsecli.Slice(input[1:])")
-	g.checkPreparationError("")
+	g.checkPreparationError("", "")
 
 	g.w("switch runFunc {")
+
+	g.w(`case "help":`)
+	{
+		g.w("var x string")
+		g.w(`if len(parsedArgs) > 0 {`)
+		g.w("x = parsedArgs[0]")
+		g.w("if x == \"help\" { x = \"\" } else { x = funcNames[x] }")
+		g.w("}")
+		g.w("fmt.Println(funcHelps[x])")
+		g.w("return nil")
+	}
 
 	for f, finfo := range functions {
 
 		g.w(`case "%s":`, f)
 
-		if err := checkArgs(g, finfo.Signature); err != nil {
-			return nil, err
-		}
+		checkArgs(g, finfo)
 		if err := callFunc(g, finfo); err != nil {
 			return nil, err
 		}
@@ -186,10 +210,10 @@ func File(packageName string, functions map[string]*parse.Function) ([]byte, err
 	return format.Source(g.b.Bytes())
 }
 
-func checkArgs(g *generator, sig *parse.Signature) error {
+func checkArgs(g *generator, f *parse.Function) {
 
 	var numArgs int
-	for _, arg := range sig.Argument {
+	for _, arg := range f.Signature.Argument {
 		if !arg.IsPointer {
 			numArgs += 1
 			continue
@@ -197,10 +221,8 @@ func checkArgs(g *generator, sig *parse.Signature) error {
 	}
 
 	g.w(`if len(parsedArgs) < %d {`, numArgs)
-	g.returnPreparationError("not enough arguments")
+	g.returnPreparationError(f.UIName, "not enough arguments")
 	g.w("}")
-
-	return nil
 }
 
 func callFunc(g *generator, f *parse.Function) error {
@@ -239,12 +261,12 @@ func callFunc(g *generator, f *parse.Function) error {
 		g.w("var %s %s%s", id, pChar, t)
 	}
 
-	numConv := func(g *generator, arg *parse.Param, source, id, t string, f string) {
+	numConv := func(g *generator, arg *parse.Param, source, id, t string, fx string) {
 		writeVar(g, arg, id, t)
 		x := newGenerator()
 		tempID := nextIdentifier()
-		x.w("%s, err := strconv.%s(%s, 10, intSize)", tempID, f, source)
-		x.checkPreparationError("")
+		x.w("%s, err := strconv.%s(%s, 10, intSize)", tempID, fx, source)
+		x.checkPreparationError(f.UIName, "")
 
 		if arg.IsPointer {
 			y := nextIdentifier()
@@ -276,7 +298,7 @@ func callFunc(g *generator, f *parse.Function) error {
 
 			tempID := nextIdentifier()
 			x.w("%s, err := strconv.ParseFloat(%s, 32)", tempID, source)
-			x.checkPreparationError("")
+			x.checkPreparationError(f.UIName, "")
 
 			if arg.IsPointer {
 				y := nextIdentifier()
@@ -301,7 +323,7 @@ func callFunc(g *generator, f *parse.Function) error {
 			}
 
 			x.w("%s, err := strconv.ParseBool(%s)", t, source)
-			x.checkPreparationError("")
+			x.checkPreparationError(f.UIName, "")
 
 			if arg.IsPointer {
 				y := nextIdentifier()
@@ -360,4 +382,60 @@ func callFunc(g *generator, f *parse.Function) error {
 	}
 
 	return nil
+}
+
+type nameDesc struct{ Name, Description string }
+
+func makeHelpTexts(functions map[string]*parse.Function) map[string]string {
+	o := make(map[string]string)
+	for functionName, function := range functions {
+
+		var args, flags []string
+		var opts []nameDesc
+		for _, x := range function.Signature.Argument {
+
+			fx := fmt.Sprintf("[--%s]", x.Name)
+			fy := fmt.Sprintf("<%s>", x.Name)
+
+			if x.IsPointer {
+				flags = append(flags, fx)
+				opts = append(opts, nameDesc{
+					Name: x.Name,
+				})
+			} else {
+				args = append(args, fy)
+			}
+		}
+
+		o[functionName] = helpTextString("%s", function.Description, function.UIName, args, flags, "flags", opts)
+	}
+
+	// make overall help text
+	var opts []nameDesc
+	for _, finfo := range functions {
+		opts = append(opts, nameDesc{Name: finfo.UIName, Description: finfo.Description})
+	}
+	o[""] = helpTextString("%s", "", "<command>", []string{"[<args>]"}, []string{"[<flags>]"}, "commands", opts)
+
+	return o
+}
+
+func helpTextString(execName, description, command string, args, flags []string, optName string, opts []nameDesc) string {
+	if description != "" {
+		description += "\n"
+	}
+
+	var optsString string
+	if len(opts) != 0 {
+		optsString += "Available " + optName + ":\n"
+		var x []string
+		for _, opt := range opts {
+			x = append(x, fmt.Sprintf("    %s  %s", opt.Name, opt.Description))
+		}
+		optsString += strings.Join(x, "\n")
+
+		optsString = "\n\n" + optsString
+	}
+
+	return fmt.Sprintf("%sUsage: %s %s %s %s%s", description, execName, command, strings.Join(flags, " "), strings.Join(args, " "), optsString)
 }

@@ -47,10 +47,11 @@ func Directory(dir string) (*Parsed, error) {
 }
 
 type Function struct {
-	Name      string
-	UIName    string
-	Directive string
-	Signature *Signature
+	Name        string
+	UIName      string
+	Directive   string
+	Signature   *Signature
+	Description string
 }
 
 func getFunctionsFromPackage(pkg *ast.Package) (map[string]*Function, error) {
@@ -91,6 +92,10 @@ func getFunctionsFromPackage(pkg *ast.Package) (map[string]*Function, error) {
 					name = splitDirective[1]
 				} else {
 					name = s
+				}
+
+				if strings.ToLower(name) == "help" {
+					return nil, errors.New("disallowed function name \"help\": help is a reserved name")
 				}
 
 				functions[name] = &Function{
